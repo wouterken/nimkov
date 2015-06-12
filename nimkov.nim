@@ -1,8 +1,41 @@
+import ncache
+import times
 import ssm
+import os, algorithm
+import tables
 
-const keys = ["UBEMQXVzbmegOiV", "ySOwRDulkelSbsl", "PWGTnHldVHHWhjd", "EDaQqakUEmNidZB", "uBzzootzXZMHvzv", "qKtESmjTYSFnxwx", "FqYwPvwlBuorCXO", "lbipKmBvzXaJsJN", "sgIwQSFpXTiUufn", "uOkxVPZeHIPaFSu", "qbylIvXpefMcICn", "oYHjHRhJBXahvCl", "kRnXwclbBSjFTlJ", "buCniGFjzOEBbrS", "YjnikYlpkpPZbVh", "xhtCBNQVTbclzgf", "oymPGspYEaUgGuc", "ayuYrkXvQTRlDgp", "TGRXaNkAGFWSRwq", "AUdORnxagQFnsot", "BmfnDLhnbguOznX", "eeRwwdwEofzbVFZ", "ValaaqiJhKpJOgQ", "odEpgzzjLGVebbB", "ElHqHWoyFpraMxQ", "WdTTWcCxURGwSGx", "KRXJEAdHGALtsJn", "rralEKtLmtKveWf", "WrYtxASrMKfuhNA", "qdSZFSevJeASKiy", "DcPyHyjvnwSWKsW", "ApAoMoOWfleJERZ", "kkeKHXQyJnrZEqT", "xHEfBDNsvDijTHK", "GLJJFOImworMyyt", "rzMKHHPLgpjoBdp", "jByJOYOJtejLJuJ", "NJxMRfgGLJkwsSN", "JOOnUUMzcocXxlK", "NWKBhoIKlHjbitw", "RtJuIrHIGggXrDK", "lKofyTSnZgymmOl", "NldsoCdRUMdaNKB", "UDSirZDMxoqXTcr", "WquXUzoAqsCFFeI", "QQYlqtNMUKIOVJy", "HalHRkBvTIOsDaY", "zqwFlymjyNuMQOB", "GGIMvLMJiJiaImE", "AWTaMAqxiZgyPGO", "tmuGVQZgezRtbaG", "PYWTFWVIhXennbS", "WjvpUKIfFevEElo", "xBvdZnabPkYsuMn", "QUZISRzFfoDctAR", "BvvXByzlXgGpOYO", "WYzKIDLTipUNvIY", "fbOZADViwISLtWN", "TgQkVlMefpLHCrr", "gVgPZGNKLlaKQoD", "kBekrqiYVggftXG", "NOYrObQidAUGlTB", "TmaKovMtlbLNsWh", "JJjTvSsSVpvXpav", "GmbZGngqsZePxGX", "YhypVQiWyGXLrGJ", "QTfOjdoqPslXPke", "sWmDwwCFJuiYNQl", "wPltmWZtpaPoXCP", "mVBlWpkYHqlswsv", "bndrStlvSfFnBGa", "bUTkOpQualSDhjm", "fXNOoDOvBSuhVrf", "GisrVJqShufcDge", "UgyyyYbSDlKPXJf", "HhsLbKbbpNUOXzp", "wZnYtzguPUBtUqy", "VYSYlDWdzxlPdvj", "aZSxgQPzIETFwHk", "tgSnGRhwuFYeBLK", "wlDSuLWJdbRlOlR", "WZNGYKfXGEFiEMG", "ypdEBHhCdTXpmxr", "nvkKDYWpAfJeOBP", "MTwFzjIlGPhirCg", "vlAWeqzYlwOKVNO", "PYGEbhnWLfyBmyl", "rfkcFMKHPXxgxrc", "gxDcivqbIYoiHCh", "NsJDJAZzOMsWyDs", "CofwBQFXKKytAPK", "esIAORejFlyShlh", "dQIMzaYhrYrwpDa", "kqsuNuKsWpfDkiN", "JshodjkBkvHmDjQ", "yyFNumGWyJVtHWQ", "lfmTnfdMTPqRISa", "CrzFwIjAEVrDEvc", "jdazMXXHzVNdAlL", "VfzwluLNKcvSfAG"]
-var my_ssm = newSSM("ssms/test.ssm")
-for i in 0..10_000:
-  for key in keys:
-    echo my_ssm.get(key)
+type
+  Nimkov* = ref NimkovType
+  NimkovType = object
+    cache: NCache
+    ssms: Table[string, SSM]
+
+proc new*(_:typedesc[Nimkov], size:int):Nimkov=
+  new(result)
+  result.ssms = initTable[string, SSM]()
+  result.cache = NCache.new(size)
+
+proc list_ssms(nk:Nimkov):seq[string]=
+  result = @[]
+  for filename in walkFiles("ssms/*.ssm"):
+    result.add(filename)
+  result.sort do (x, y: string) -> int: cmp(y, x)
+
+proc `[]`*(nk:Nimkov, key:string):string=
+  if nk.cache[key] == nil:
+    for filename in nk.list_ssms:
+      var ssm:SSM;
+      try:
+         ssm = if nk.ssms.hasKey(filename): nk.ssms[filename] else: SSM.new(filename)
+      except:
+        continue
+      nk.ssms[filename] = ssm
+      var ssm_value = ssm[key]
+      if ssm_value != nil:
+        nk.cache[key] = ssm_value
+        break
+  nk.cache[key]
+
+proc `[]=`*(nk:Nimkov, key, value:string):bool{.discardable.}=
+  nk.cache.put(key, value)
 
