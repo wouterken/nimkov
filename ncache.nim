@@ -1,6 +1,7 @@
 include strtabs
 import threadpool, algorithm, strutils
 import times
+import kv
 
 type
   NCache* = ref NCacheType
@@ -14,37 +15,38 @@ type
 proc shift(cache:NCache):void;
 proc saveSSM(cache:NCache, table:StringTableRef, filename:string):void;
 
-proc put*(cache:NCache, key, value:string):bool{.discardable.}=
+proc put*(cache:NCache, key, value:string):string{.discardable.}=
   cache.warmed[key] = value
   if cache.warmed.len > cache.size:
     cache.shift
-    return true
-
   var warmFile = cache.warmFile
   var struct = cache.warmed
-  return false
+  return KV.toKVString(key, value)
 
 proc `[]`*(cache:NCache, key:string):string=
+  var needle = key
   result = nil
-  if not cache.warmed.hasKey(key):
-    if cache.frozen.hasKey(key):
-      cache.warmed[key] = cache.frozen[key]
-  if cache.warmed.hasKey(key):
-    result = cache.warmed[key]
+  if not cache.warmed.hasKey(needle):
+    if cache.frozen.hasKey(needle):
+      cache.warmed[needle] = cache.frozen[needle]
+      result = cache.warmed[needle]
+  else:
+    result = cache.warmed[needle]
 
-proc `[]=`*(cache:NCache, key, value:string):bool{.discardable.}=
+proc `[]=`*(cache:NCache, key, value:string):string{.discardable.}=
   return cache.put(key, value)
 
+proc contains*(cache:NCache, key:string):bool=
+  (cache.warmed.hasKey(key) or cache.frozen.hasKey(key)) and cache[key] != nil
 
-
-proc frozen_copy(cache:NCache):StringTableRef=
+proc frozenCopy(cache:NCache):StringTableRef=
   new(result)
   result[]= cache.frozen[]
 
-proc frozen_pairs(cache:NCache):tuple[delim:string, pairs:seq[tuple[key, value:string]]]=
+proc frozenPairs(cache:NCache):tuple[delim:string, pairs:seq[tuple[key, value:string]]]=
   var pairs:seq[tuple[key,value:string]] = @[]
   var delim = "--"
-  for key,value in cache.frozen_copy.pairs:
+  for key,value in cache.frozenCopy.pairs:
     pairs.add((key, value))
     if key.contains(delim) or value.contains(delim):
       delim.add("-")
@@ -61,11 +63,10 @@ proc nextFile():string=
   result = filename & $(fileIndex) & ".ssm"
 
 proc saveSSM(cache:NCache, table:StringTableRef, filename:string):void=
-  var frozenPairs = cache.frozen_pairs
-  var outputFile:File
-  outputFile.writeln("boundary="&frozenPairs.delim)
+  var frozenPairs = cache.frozenPairs
+  var outputFile:File = open(filename, fmWrite)
   for index, pair in frozenPairs.pairs:
-    var data = frozenPairs.delim & pair.key & "=" & pair.value
+    var data = KV.toKVString(pair.key, pair.value)
     discard outputFile.writeChars(cast[seq[char]](data), 0, data.len)
 
 proc saveCold(cache:NCache):void=
@@ -90,3 +91,16 @@ proc new*(_:typedesc[NCache], size:int):NCache=
   result.warmed   = newStringTable(modeCaseSensitive)
   result.frozen   = newStringTable(modeCaseSensitive)
 
+
+##
+# Tests
+##
+when isMainModule:
+  var cache = NCache.new(100)
+  var key = """hello
+  world=thistest"""
+  var value = """ This=
+  a multiline test"""
+  assert cache[key] == nil
+  cache[key] = value
+  assert cache[key] == value
